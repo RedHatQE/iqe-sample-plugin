@@ -1,0 +1,58 @@
+[project]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Framework :: Pytest",
+  "Intended Audience :: Developers",
+  "Topic :: Software Development :: Testing",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Operating System :: OS Independent",
+  "Private :: Do Not Upload",
+]
+dynamic = ["version"]
+keywords = ["pytest", "plugin", "iqe"]
+# List of maintainers.
+maintainers = [
+  {name = "Nikhil Dhandre", email = "ndhandre@redhat.com"},
+]
+name = "iqe-sample-plugin"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "iqe-core"
+]
+
+[project.entry-points."iqe.application_plugins"]
+"sample" = "iqe_sample:Applicationsample"
+
+[project.entry-points.pytest11]
+"iqe_sample_plugin" = "iqe_sample.pytest_plugin"
+
+# If plugin holds some collections
+# [project.entry-points."iqe.application_collections"]
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling", "hatch-vcs"]
+
+[tool.hatch.build.targets.wheel]
+# plugin and API directories must be part of package.
+packages = ["iqe_sample"]
+
+[tool.hatch.envs.default]
+python = "3.9"
+
+[tool.hatch.version]
+raw-options.version_scheme = "calver-by-date"
+source = "vcs"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["F", "I", "UP"]

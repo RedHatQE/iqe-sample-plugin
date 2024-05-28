@@ -1,2 +1,2 @@
-def test_plugin_accessible(application):
-    hasattr(application, "sample")
+def test_plugin_accessible(app):
+    app.sample

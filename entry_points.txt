@@ -1,5 +1,0 @@
-[iqe.application_plugins]
-sample = iqe_sample:ApplicationSample
-
-[pytest11]
-iqe_sample_plugin = iqe_sample.pytest_plugin

@@ -1,3 +1,0 @@
-# This will eventually have the iqe-integration-tests package as a requirement
-
--e .

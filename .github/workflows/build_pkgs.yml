@@ -1,0 +1,60 @@
+name: Build Packages for IQE
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types: ["opened", "synchronize", "reopened"]
+
+jobs:
+  build-packages:
+    name: ${{ matrix.os }}-🐍-${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - name: Set up Python-${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            sudo apt update
+            sudo apt install -y python3-dev libkrb5-dev build-essential
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            brew reinstall krb5
+          fi
+          pip install pip setuptools wheel build Cython -U
+
+      - name: Pull source code and build wheels
+        run: |
+          # Packages list which IQE like to build.
+          packages=("gssapi" "netifaces")
+          mkdir -p tarballs
+          mkdir -p wheels
+
+          # Loop through each package
+          for package in "${packages[@]}"
+          do
+              # Download the package without dependencies
+              pip download --no-deps --no-binary :all: $package -d tarballs
+              # Extract the downloaded tar.gz file
+              tar -xvf tarballs/${package}*.tar.gz -C tarballs
+              # Build the wheel
+              cd tarballs/${package}-*/
+              python -m build -w
+              # Move the wheel to the wheels directory
+              mv dist/* ../../wheels
+              cd ../..
+          done
+          ls wheels
+      - name: Archive wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-py-${{ matrix.python-version }}-${{ matrix.os }}
+          path: wheels

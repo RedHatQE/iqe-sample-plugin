@@ -6,9 +6,6 @@ classifiers = [
   "Topic :: Software Development :: Testing",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: Implementation :: CPython",
   "Operating System :: OS Independent",
@@ -22,7 +19,7 @@ maintainers = [
 ]
 name = "iqe-sample-plugin"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 dependencies = [
     "iqe-core"
 ]
@@ -45,7 +42,7 @@ requires = ["hatchling", "hatch-vcs"]
 packages = ["iqe_sample"]
 
 [tool.hatch.envs.default]
-python = "3.9"
+python = "3.12"
 
 [tool.hatch.version]
 raw-options.version_scheme = "calver-by-date"

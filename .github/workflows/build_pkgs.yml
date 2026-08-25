@@ -8,15 +8,22 @@ on:
     types: ["opened", "synchronize", "reopened"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-packages:
     name: ${{ matrix.os }}-🐍-${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12", "3.13", "3.14"]
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Set up Python-${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
@@ -55,8 +62,10 @@ jobs:
               cd ../..
           done
           ls wheels
+
       - name: Archive wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-py-${{ matrix.python-version }}-${{ matrix.os }}
           path: wheels
+          if-no-files-found: error

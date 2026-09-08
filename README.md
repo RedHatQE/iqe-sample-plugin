@@ -1,23 +1,38 @@
 # iqe-wheels
 
-This project builds and publishes binary wheels for IQE dependencies that require compilation (like `gssapi`, `netifaces`, and `python-qpid-proton`).
+This project builds and publishes binary wheels for IQE dependencies that require compilation (`gssapi`, `netifaces`, `python-qpid-proton`).
 
-By providing these wheels via a PEP 503 simple index, IQE execution images do not need to ship with `gcc` or other build tools, resulting in smaller and more secure images.
+By providing these wheels via a PEP 503 simple index, IQE execution images do not need to ship with `gcc` or other build tools.
 
 | | |
 |---|---|
 | **Packages** | `gssapi`, `netifaces`, `python-qpid-proton` |
-| **Python** | 3.12, 3.13, 3.14 (configurable in `packages.json`) |
+| **Python** | 3.12, 3.13, 3.14 (edit `packages.json`) |
 | **Platforms** | `manylinux_2_28_x86_64`, macOS (`macos-latest`) |
 | **Schedule** | Daily (06:00 UTC) plus `workflow_dispatch` |
+| **Index** | `https://redhatqe.github.io/iqe-wheels/simple` |
+
+## CI behaviour
+
+| Trigger | Build | Validate | Publish Pages |
+|---|---|---|---|
+| Pull request | yes | yes (dry-run index) | no |
+| Push to `main` | yes | yes | yes |
+| Daily cron | yes | yes | yes |
+| `workflow_dispatch` | yes | yes | yes |
+
+Every built wheel is checked with `zipfile.testzip()` before upload. Publish merges only validated wheels and skips any corrupt files already on `gh-pages`.
 
 ## Consumption with uv
-
-To use these wheels, add the following to your plugin's `pyproject.toml`. This configuration ensures that `uv` pulls the pre-built wheels from this repository instead of trying to compile them.
 
 ```toml
 [tool.uv]
 no-build-package = ["gssapi", "netifaces", "python-qpid-proton"]
+
+[[tool.uv.index]]
+name = "cqt-pypi"
+url = "https://nexus.corp.redhat.com/repository/cqt-pypi/simple"
+default = true
 
 [[tool.uv.index]]
 name = "iqe-wheels"
@@ -30,19 +45,27 @@ netifaces = { index = "iqe-wheels" }
 python-qpid-proton = { index = "iqe-wheels" }
 ```
 
-**Note:** `explicit = true` is used to prevent `uv` from searching this index for other packages, which helps avoid dependency confusion.
+`explicit = true` stops uv from searching this index for other packages. uv does not inherit index config from dependencies — each plugin repo needs this block.
 
-## How it works
+## Adding packages or versions
 
-1.  **Build**: A GitHub Action matrix builds wheels for each supported Python version and platform.
-    *   **Linux**: Built inside `quay.io/pypa/manylinux_2_28_x86_64` to ensure compatibility with UBI9-based images.
-    *   **macOS**: Built on `macos-latest` with necessary system headers installed via Homebrew.
-2.  **Accumulate**: The workflow fetches the existing `gh-pages` branch and merges the new wheels into the existing set. This allows the index to grow over time and support multiple versions of the same package.
-3.  **Index**: A custom script generates a PEP 503 compliant `simple` index from the accumulated wheels.
-4.  **Publish**: The updated index and wheels are force-pushed to the `gh-pages` branch, making them available via GitHub Pages.
+Edit `packages.json`:
 
-## Adding new packages or versions
+- **`packages`**: unversioned names; the daily cron builds whatever is latest on PyPI.
+- **`pinned`**: explicit versions to keep on the index (n, n-1, n-2, …).
 
--   To add a new package or Python version, update `packages.json`.
--   To pin specific older versions for building, add them to the `pinned` array in `packages.json`.
--   The daily cron job will automatically pick up and build the latest versions available on PyPI.
+After changing `packages.json`, merge to `main` or run **Build and Publish IQE Wheels** manually.
+
+## Local checks
+
+```bash
+# Validate wheels already on disk
+python3 scripts/validate_wheels.py wheels/
+
+# Build on macOS (example)
+./scripts/build_wheels.sh
+
+# Generate a local simple index preview
+mkdir -p site/packages && cp wheels/*.whl site/packages/
+python3 scripts/generate_index.py site --simple-url https://redhatqe.github.io/iqe-wheels/simple
+```

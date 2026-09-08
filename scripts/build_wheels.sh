@@ -14,8 +14,10 @@ if [[ -n "${PACKAGE_SPEC:-}" ]]; then
   # shellcheck disable=SC2206
   packages=(${PACKAGE_SPEC})
 else
-  mapfile -t packages < <(
-    "${PYTHON}" -c "
+  packages=()
+  while IFS= read -r line; do
+    [[ -n "${line}" ]] && packages+=("${line}")
+  done <<< "$("${PYTHON}" -c "
 import json
 from pathlib import Path
 
@@ -25,8 +27,7 @@ for spec in data.get('packages', []) + data.get('pinned', []):
     if spec and spec not in seen:
         seen.add(spec)
         print(spec)
-"
-  )
+")"
 fi
 
 if [[ ${#packages[@]} -eq 0 ]]; then

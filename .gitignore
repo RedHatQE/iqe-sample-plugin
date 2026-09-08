@@ -50,5 +50,7 @@ raw-wheels/
 site/
 previous-site/
 new-wheels/
+artifact-download/
+built-wheels/
 dry-run/
 .test-wheels/

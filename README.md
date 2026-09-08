@@ -21,7 +21,7 @@ By providing these wheels via a PEP 503 simple index, IQE execution images do no
 | Daily cron | yes | yes | yes |
 | `workflow_dispatch` | yes | yes | yes |
 
-Every built wheel is checked with `zipfile.testzip()` before upload. Publish merges only validated wheels and skips any corrupt files already on `gh-pages`.
+Every built wheel is checked with `zipfile.testzip()` before upload. Artifact downloads are **not** merged with GitHub's `merge-multiple` (that corrupts duplicate filenames such as `gssapi-*-cp311-abi3-*.whl` produced by every Linux matrix job). Instead, `scripts/collect_wheels.sh` validates and dedupes by filename before publish.
 
 ## Consumption with uv
 

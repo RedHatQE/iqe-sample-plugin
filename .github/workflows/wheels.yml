@@ -124,13 +124,13 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: wheels-*
-          path: built-wheels
-          merge-multiple: true
+          path: artifact-download
+          merge-multiple: false
 
-      - name: Validate wheel archives
+      - name: Collect and dedupe wheels
         run: |
           chmod +x scripts/*.sh
-          python3 scripts/validate_wheels.py built-wheels
+          bash scripts/collect_wheels.sh artifact-download built-wheels
 
       - name: Dry-run simple index generation
         run: |
@@ -164,12 +164,13 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: wheels-*
-          path: new-wheels
-          merge-multiple: true
+          path: artifact-download
+          merge-multiple: false
 
       - name: Merge validated wheels and generate simple index
         run: |
           chmod +x scripts/*.sh
+          bash scripts/collect_wheels.sh artifact-download new-wheels
           bash scripts/merge_site.sh \
             previous-site \
             new-wheels \

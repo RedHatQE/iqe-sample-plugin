@@ -56,7 +56,7 @@ jobs:
           PYTHON_VERSION: ${{ matrix.python-version }}
           PACKAGE_SPEC: ${{ github.event.inputs.package_spec }}
         run: |
-          chmod +x scripts/build_wheels.sh scripts/build_manylinux.sh
+          chmod +x scripts/*.sh
           docker run --rm \
             -v "${PWD}:/io" \
             -e PYTHON_VERSION \
@@ -100,7 +100,7 @@ jobs:
           PACKAGE_SPEC: ${{ github.event.inputs.package_spec }}
           PYTHON: python
         run: |
-          chmod +x scripts/build_wheels.sh
+          chmod +x scripts/*.sh
           ./scripts/build_wheels.sh
 
       - uses: actions/upload-artifact@v4
@@ -109,14 +109,45 @@ jobs:
           path: wheels
           if-no-files-found: error
 
-  publish:
-    name: Publish GitHub Pages index
+  validate:
+    name: Validate built wheels
     needs: [build-linux, build-macos]
     if: |
       always() &&
+      needs.build-linux.result != 'cancelled' &&
+      needs.build-macos.result != 'cancelled' &&
+      (needs.build-linux.result == 'success' || needs.build-macos.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: built-wheels
+          merge-multiple: true
+
+      - name: Validate wheel archives
+        run: |
+          chmod +x scripts/*.sh
+          python3 scripts/validate_wheels.py built-wheels
+
+      - name: Dry-run simple index generation
+        run: |
+          mkdir -p dry-run/packages
+          cp -a built-wheels/*.whl dry-run/packages/
+          python3 scripts/generate_index.py dry-run \
+            --simple-url "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/simple"
+
+  publish:
+    name: Publish GitHub Pages index
+    needs: [build-linux, build-macos, validate]
+    if: |
       github.event_name != 'pull_request' &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
-      (needs.build-linux.result == 'success' || needs.build-macos.result == 'success')
+      needs.build-linux.result == 'success' &&
+      needs.build-macos.result == 'success' &&
+      needs.validate.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -136,16 +167,14 @@ jobs:
           path: new-wheels
           merge-multiple: true
 
-      - name: Merge wheels and generate simple index
+      - name: Merge validated wheels and generate simple index
         run: |
-          mkdir -p site/packages
-          shopt -s nullglob
-          if [ -d previous-site/packages ]; then
-            cp -a previous-site/packages/*.whl site/packages/ || true
-          fi
-          cp -a new-wheels/*.whl site/packages/
-          python3 scripts/generate_index.py site \
-            --simple-url "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/simple"
+          chmod +x scripts/*.sh
+          bash scripts/merge_site.sh \
+            previous-site \
+            new-wheels \
+            site \
+            "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/simple"
 
       - name: Publish gh-pages
         uses: peaceiris/actions-gh-pages@v4

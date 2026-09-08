@@ -43,18 +43,24 @@ yum install -y \
   libffi-devel \
   unzip
 
-"${PYTHON}" -m pip install -U pip setuptools wheel build Cython
+"${PYTHON}" -m pip install -U pip setuptools wheel build Cython auditwheel
 
+rm -rf "${WHEELS_DIR}" "${RAW_WHEELS}"
 mkdir -p "${WHEELS_DIR}" "${RAW_WHEELS}"
 WHEELS_DIR="${RAW_WHEELS}" bash "${ROOT}/scripts/build_wheels.sh"
 
 shopt -s nullglob
-for wheel in "${RAW_WHEELS}"/*.whl; do
-  if ! auditwheel repair "${wheel}" -w "${WHEELS_DIR}" --plat manylinux_2_28_x86_64 \
-    "${AUDITWHEEL_EXCLUDES[@]}"; then
-    echo "auditwheel repair failed for ${wheel}; keeping the linux_* wheel"
-    cp -a "${wheel}" "${WHEELS_DIR}/"
-  fi
+raw_wheels=( "${RAW_WHEELS}"/*.whl )
+if (( ${#raw_wheels[@]} == 0 )); then
+  echo "no raw wheels to repair" >&2
+  exit 1
+fi
+
+for wheel in "${raw_wheels[@]}"; do
+  echo "auditwheel repair ${wheel}"
+  auditwheel repair "${wheel}" -w "${WHEELS_DIR}" --plat manylinux_2_28_x86_64 \
+    "${AUDITWHEEL_EXCLUDES[@]}"
 done
 
+python3 "${ROOT}/scripts/validate_wheels.py" "${WHEELS_DIR}"
 ls -l "${WHEELS_DIR}"

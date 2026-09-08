@@ -50,3 +50,5 @@ raw-wheels/
 site/
 previous-site/
 new-wheels/
+dry-run/
+.test-wheels/

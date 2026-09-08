@@ -1,71 +1,158 @@
 name: Build Packages for IQE
 
 on:
-  push:
-    branches:
-      - master
-  pull_request:
-    types: ["opened", "synchronize", "reopened"]
+  schedule:
+    # Weekly: pick up new PyPI versions.
+    - cron: "0 6 * * *"
   workflow_dispatch:
+    inputs:
+      package_spec:
+        description: "Override packages (space-separated pip specifiers). Empty uses packages.json."
+        required: false
+        default: ""
+  push:
+    branches: [main, master]
+    paths:
+      - "packages.json"
+      - "scripts/**"
+      - ".github/workflows/build_pkgs.yml"
+  pull_request:
+    paths:
+      - "packages.json"
+      - "scripts/**"
+      - ".github/workflows/build_pkgs.yml"
 
 permissions:
   contents: read
 
+concurrency:
+  group: wheels-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  build-packages:
-    name: ${{ matrix.os }}-🐍-${{ matrix.python-version }}
+  config:
+    name: Read matrix
+    runs-on: ubuntu-latest
+    outputs:
+      python_versions: ${{ steps.set.outputs.python_versions }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: set
+        run: echo "python_versions=$(jq -c .python_versions packages.json)" >> "${GITHUB_OUTPUT}"
+
+  build-linux:
+    name: linux-manylinux-py${{ matrix.python-version }}
+    needs: config
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJson(needs.config.outputs.python_versions) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build manylinux wheels
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+          PACKAGE_SPEC: ${{ github.event.inputs.package_spec }}
+        run: |
+          chmod +x scripts/build_wheels.sh scripts/build_manylinux.sh
+          docker run --rm \
+            -v "${PWD}:/io" \
+            -e PYTHON_VERSION \
+            -e PACKAGE_SPEC \
+            quay.io/pypa/manylinux_2_28_x86_64:latest \
+            bash /io/scripts/build_manylinux.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-py${{ matrix.python-version }}-linux
+          path: wheels
+          if-no-files-found: error
+
+  build-macos:
+    name: ${{ matrix.os }}-py${{ matrix.python-version }}
+    needs: config
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ["3.12", "3.13", "3.14"]
+        os: [macos-latest]
+        python-version: ${{ fromJson(needs.config.outputs.python_versions) }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python-${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
-          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-            sudo apt update
-            sudo apt install -y python3-dev libkrb5-dev build-essential
-          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            brew reinstall krb5
-          fi
-          pip install pip setuptools wheel build Cython -U
+          brew install krb5 cmake swig openssl@3
+          python -m pip install -U pip setuptools wheel build Cython
+          echo "PATH=$(brew --prefix krb5)/bin:${PATH}" >> "${GITHUB_ENV}"
+          echo "CFLAGS=-I$(brew --prefix krb5)/include -I$(brew --prefix openssl@3)/include" >> "${GITHUB_ENV}"
+          echo "LDFLAGS=-L$(brew --prefix krb5)/lib -L$(brew --prefix openssl@3)/lib" >> "${GITHUB_ENV}"
+          echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> "${GITHUB_ENV}"
 
-      - name: Pull source code and build wheels
+      - name: Build wheels
+        env:
+          PACKAGE_SPEC: ${{ github.event.inputs.package_spec }}
+          PYTHON: python
         run: |
-          # Packages list which IQE like to build.
-          packages=("gssapi" "netifaces" "python-qpid-proton")
-          mkdir -p tarballs
-          mkdir -p wheels
+          chmod +x scripts/build_wheels.sh
+          ./scripts/build_wheels.sh
 
-          # Loop through each package
-          for package in "${packages[@]}"
-          do
-              # Download the package without dependencies
-              pip download --no-deps --no-binary :all: $package -d tarballs
-              # Extract the downloaded tar.gz file
-              package_path="${package//-/_}"
-              tar -xvf tarballs/${package_path}*.tar.gz -C tarballs
-              # Build the wheel
-              cd tarballs/${package_path}-*/
-              python -m build -w
-              # Move the wheel to the wheels directory
-              mv dist/* ../../wheels
-              cd ../..
-          done
-          ls wheels
-
-      - name: Archive wheels
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: wheels-py-${{ matrix.python-version }}-${{ matrix.os }}
+          name: wheels-py${{ matrix.python-version }}-${{ matrix.os }}
           path: wheels
           if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Pages index
+    needs: [build-linux, build-macos]
+    if: |
+      always() &&
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
+      (needs.build-linux.result == 'success' || needs.build-macos.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch existing Pages site
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: previous-site
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: new-wheels
+          merge-multiple: true
+
+      - name: Merge wheels and generate simple index
+        run: |
+          mkdir -p site/packages
+          shopt -s nullglob
+          if [ -d previous-site/packages ]; then
+            cp -a previous-site/packages/*.whl site/packages/ || true
+          fi
+          cp -a new-wheels/*.whl site/packages/
+          python3 scripts/generate_index.py site \
+            --simple-url "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/simple"
+
+      - name: Publish gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          force_orphan: true
+          enable_jekyll: false
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com

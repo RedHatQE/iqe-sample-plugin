@@ -42,3 +42,11 @@ iqe/conf
 
 settings.local.yaml
 settings.credentials.yaml
+
+# Wheel build / Pages publish working dirs
+wheels/
+tarballs/
+raw-wheels/
+site/
+previous-site/
+new-wheels/

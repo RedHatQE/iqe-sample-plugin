@@ -1,30 +1,27 @@
-# iqe-sample-plugin
+# iqe-wheels
 
-Sample plugin for the IQE tests framework.
+This project builds and publishes binary wheels for IQE dependencies that require compilation (like `gssapi`, `netifaces`, and `python-qpid-proton`).
 
-This repository also builds the compiled wheels IQE needs (`gssapi`,
-`netifaces`, `python-qpid-proton`) so images do not ship `gcc`. GitHub Actions
-publishes them as an accumulating [PEP 503](https://peps.python.org/pep-0503/)
+By providing these wheels via a PEP 503 simple index, IQE execution images do not need to ship with `gcc` or other build tools, resulting in smaller and more secure images.
 
 | | |
 |---|---|
-| Packages | `gssapi`, `netifaces`, `python-qpid-proton` |
-| Python | 3.12, 3.13, 3.14 (edit `packages.json`) |
-| Platforms | `manylinux_2_28_x86_64`, macOS (`macos-latest`) |
-| Schedule | Daily (06:00 UTC) plus `workflow_dispatch` |
+| **Packages** | `gssapi`, `netifaces`, `python-qpid-proton` |
+| **Python** | 3.12, 3.13, 3.14 (configurable in `packages.json`) |
+| **Platforms** | `manylinux_2_28_x86_64`, macOS (`macos-latest`) |
+| **Schedule** | Daily (06:00 UTC) plus `workflow_dispatch` |
 
-New package versions, Python versions, or OS tags are **added**. Existing
-wheels stay on the index unless the same filename is rebuilt.
+## Consumption with uv
 
-
-## Consume with uv
-
-Keep Nexus as the default index. Point only these three packages at Pages:
+To use these wheels, add the following to your plugin's `pyproject.toml`. This configuration ensures that `uv` pulls the pre-built wheels from this repository instead of trying to compile them.
 
 ```toml
+[tool.uv]
+no-build-package = ["gssapi", "netifaces", "python-qpid-proton"]
+
 [[tool.uv.index]]
 name = "iqe-wheels"
-url = "https://redhatqe.github.io/iqe-sample-plugin/simple"
+url = "https://redhatqe.github.io/iqe-wheels/simple"
 explicit = true
 
 [tool.uv.sources]
@@ -33,21 +30,19 @@ netifaces = { index = "iqe-wheels" }
 python-qpid-proton = { index = "iqe-wheels" }
 ```
 
-`explicit = true` stops uv from searching this index for every other package.
-uv does not inherit indexes from `iqe-core`, so plugins that lock these
-packages need the same block.
+**Note:** `explicit = true` is used to prevent `uv` from searching this index for other packages, which helps avoid dependency confusion.
 
-## How the workflow works
+## How it works
 
-- **Linux** builds inside `quay.io/pypa/manylinux_2_28_x86_64` so the wheels
-  load on UBI9. Plain `ubuntu-latest` wheels would link a newer glibc.
-- **macOS** uses `actions/setup-python` plus Homebrew `krb5` / `openssl`.
-- Pull requests **build only**. Pages is updated from default branch.
-- Publish copies the previous `gh-pages` tree, overlays new `*.whl` files,
-  regenerates `/simple/`, and force-pushes an orphan `gh-pages` commit.
+1.  **Build**: A GitHub Action matrix builds wheels for each supported Python version and platform.
+    *   **Linux**: Built inside `quay.io/pypa/manylinux_2_28_x86_64` to ensure compatibility with UBI9-based images.
+    *   **macOS**: Built on `macos-latest` with necessary system headers installed via Homebrew.
+2.  **Accumulate**: The workflow fetches the existing `gh-pages` branch and merges the new wheels into the existing set. This allows the index to grow over time and support multiple versions of the same package.
+3.  **Index**: A custom script generates a PEP 503 compliant `simple` index from the accumulated wheels.
+4.  **Publish**: The updated index and wheels are force-pushed to the `gh-pages` branch, making them available via GitHub Pages.
 
-To rebuild specific versions instead of “whatever PyPI currently ships”:
+## Adding new packages or versions
 
-```
-workflow_dispatch → package_spec: gssapi==1.11.1 netifaces==0.11.0 python-qpid-proton==0.40.0
-```
+-   To add a new package or Python version, update `packages.json`.
+-   To pin specific older versions for building, add them to the `pinned` array in `packages.json`.
+-   The daily cron job will automatically pick up and build the latest versions available on PyPI.

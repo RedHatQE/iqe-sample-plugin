@@ -5,9 +5,5 @@
     "netifaces",
     "python-qpid-proton"
   ],
-  "pinned": [
-    "gssapi==1.11.1",
-    "netifaces==0.11.0",
-    "python-qpid-proton==0.40.0"
-  ]
+  "pinned": []
 }

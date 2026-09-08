@@ -15,9 +15,10 @@ if [[ -n "${PACKAGE_SPEC:-}" ]]; then
   packages=(${PACKAGE_SPEC})
 else
   packages=()
+  # Extract both 'packages' and 'pinned' keys and remove duplicates
   while IFS= read -r line; do
     [[ -n "${line}" ]] && packages+=("${line}")
-  done <<< "$("${PYTHON}" -c "import json; print('\n'.join(json.load(open('packages.json'))['packages']))")"
+  done <<< "$("${PYTHON}" -c "import json; d=json.load(open('packages.json')); pkgs = d.get('packages', []) + d.get('pinned', []); print('\n'.join(pkgs))" | sort -u)"
 fi
 
 echo "Building with $("${PYTHON}" --version): ${packages[*]}"
